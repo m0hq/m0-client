@@ -1,6 +1,6 @@
 {
   "name": "@m0hq/m0-client",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "description": "M0 Client",
   "keywords": [],
   "main": "dist/lib/m0-client.js",

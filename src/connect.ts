@@ -1,13 +1,22 @@
 import defer from 'p-defer'
 import PQueue from 'p-queue'
-import { getNetworkVersion, WsUrl, WsRealm } from './const'
 import { Connection, Session } from 'autobahn'
 import { Interfaces, Identities } from '@incentum/crypto'
-import { EllipticPrivateKey } from '@incentum/praxis-interfaces'
+import { getNetworkVersion, WsUrl, WsRealm } from './const'
+import { EllipticPrivateKey, DispatchResultJson, TemplateJson } from '@incentum/praxis-interfaces'
 
 export interface Ledger {
   mnemonic: string
   ledger: string
+}
+
+export interface EffectError {
+    msg: string
+    token: string
+    position: string
+    line: string
+    key: string
+    effect: string
 }
 
 export type ISubscribe = (args: any[], ledger: string) => void
@@ -20,7 +29,6 @@ export const subscribe = (session: ISession, topic: string, subscribe: ISubscrib
       // Nothing to do
     }
   })
-
 }
 
 export const subscribeQueue = (session: ISession, topic: string, queue: PQueue, subscribe: ISubscribe): void => {
@@ -33,6 +41,25 @@ export const subscribeQueue = (session: ISession, topic: string, queue: PQueue, 
     }
   })
 
+}
+
+export const call = async (session: ISession, rpc: string, args: any[]): Promise<any> => {
+  return session.session.call<any>(rpc, args)
+}
+
+export const callQueue = async (session: ISession, rpc: string, args: any[], queue: PQueue): Promise<any> => {
+  return queue.add(() => session.session.call<any>(rpc, args))
+}
+
+type RunEffectResult = DispatchResultJson | EffectError
+export const runEffect = async (session: ISession, template: TemplateJson, reducer: string, state: any, form: any): Promise<RunEffectResult> => {
+  const args = [template, reducer, state, form]
+  return session.session.call<RunEffectResult>(RunEffect, args)
+}
+
+export const runEffectQueue = async (session: ISession, queue: PQueue, template: TemplateJson, reducer: string, state: any, form: any): Promise<RunEffectResult> => {
+  const args = [template, reducer, state, form]
+  return queue.add(() => session.session.call<RunEffectResult>(RunEffect, args))
 }
 
 export const createLedger = (mnemonic: string): Ledger => {
@@ -60,11 +87,28 @@ export interface ISession {
 }
 export type StartSession = (session: ISession, ledger: string) => void
 
+export const anonymous = 'anonymous'
+export const anonymousLedger = {
+  ledger: anonymous, 
+  mnemonic: '',
+}
+export const isAnonymous = (ledger: Ledger) => ledger.ledger = anonymous
+
+export const initializeAnonymous = async (startSession: StartSession) => {
+  return initializeLedger(anonymousLedger, startSession)
+}
+
+const challengeString = 'challengeme'
 export const initializeLedger = async (ledger: Ledger, startSession: StartSession) => {
   sessions.set(ledger.ledger, defer<Session>())
 
-  const challenge = `${'challenge'}-${Date.now()}`
-  const [signature, publicKey] = signKey(challenge, ledger)
+  let challenge
+  let signature
+  let publicKey
+  if (!isAnonymous(ledger)) {
+    challenge = `${challengeString}-${Date.now()}`;
+    [signature, publicKey] = signKey(challenge, ledger)
+  }
 
   const opts: any = {
     url: WsUrl,
@@ -94,6 +138,7 @@ export const initializeLedger = async (ledger: Ledger, startSession: StartSessio
 }
 
 export const RPCPing = 'network.incentum.praxis.code.ping'
+export const RunEffect = 'network.m0.praxis.code.effect.run'
 
 const delay = async (ms: number): Promise<any> => {
   const deferred = defer()
